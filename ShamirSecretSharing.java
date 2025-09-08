@@ -9,10 +9,9 @@ public class ShamirSecretSharing {
         return new BigInteger(s, base);
     }
 
-    // Lagrange interpolation at x=0
-    static BigInteger lagrangeAtZero(List<Integer> xs, List<BigInteger> ys, int k) {
-        BigInteger resultNum = BigInteger.ZERO;
-        BigInteger resultDen = BigInteger.ONE;
+    // Lagrange interpolation at x=0 using BigInteger
+    static BigInteger lagrangeAtZero(List<BigInteger> xs, List<BigInteger> ys, int k) {
+        BigInteger secret = BigInteger.ZERO;
 
         for (int i = 0; i < k; i++) {
             BigInteger num = BigInteger.ONE;
@@ -20,37 +19,17 @@ public class ShamirSecretSharing {
 
             for (int j = 0; j < k; j++) {
                 if (i == j) continue;
-                num = num.multiply(BigInteger.valueOf(-xs.get(j)));
-                den = den.multiply(BigInteger.valueOf(xs.get(i) - xs.get(j)));
+                num = num.multiply(xs.get(j).negate());
+                den = den.multiply(xs.get(i).subtract(xs.get(j)));
             }
 
-            BigInteger termNum = ys.get(i).multiply(num);
-            BigInteger termDen = den;
-
-            resultNum = resultNum.multiply(termDen).add(termNum.multiply(resultDen));
-            resultDen = resultDen.multiply(termDen);
-
-            BigInteger gcd = resultNum.gcd(resultDen);
-            if (!gcd.equals(BigInteger.ONE)) {
-                resultNum = resultNum.divide(gcd);
-                resultDen = resultDen.divide(gcd);
-            }
+            secret = secret.add(ys.get(i).multiply(num).divide(den));
         }
 
-        // Handle negative denominator case
-        if (!resultDen.equals(BigInteger.ONE)) {
-            if (resultDen.equals(BigInteger.valueOf(-1))) {
-                resultNum = resultNum.negate();
-                resultDen = BigInteger.ONE;
-            } else {
-                throw new RuntimeException("Result not integer! Got fraction " + resultNum + "/" + resultDen);
-            }
-        }
-
-        return resultNum;
+        return secret;
     }
 
-    // Minimal JSON parser for given format
+    // Minimal JSON parser
     static Map<String, Map<String, String>> parseJson(String content) {
         Map<String, Map<String, String>> result = new HashMap<>();
         content = content.trim();
@@ -58,18 +37,15 @@ public class ShamirSecretSharing {
         String[] parts = content.split("},");
         for (String part : parts) {
             part = part.trim();
-            if (!part.endsWith("}")) part = part + "}";
+            if (!part.endsWith("}")) part += "}";
             int colon = part.indexOf(":");
             if (colon == -1) continue;
             String key = part.substring(0, colon).trim().replaceAll("[\"{}]", "");
-            String obj = part.substring(colon + 1).trim();
-            obj = obj.replaceAll("[{}\"]", "");
+            String obj = part.substring(colon + 1).trim().replaceAll("[{}\"]", "");
             Map<String, String> kv = new HashMap<>();
             for (String kvp : obj.split(",")) {
                 String[] kvs = kvp.split(":");
-                if (kvs.length == 2) {
-                    kv.put(kvs[0].trim(), kvs[1].trim());
-                }
+                if (kvs.length == 2) kv.put(kvs[0].trim(), kvs[1].trim());
             }
             result.put(key, kv);
         }
@@ -84,24 +60,25 @@ public class ShamirSecretSharing {
         int n = Integer.parseInt(keys.get("n"));
         int k = Integer.parseInt(keys.get("k"));
 
-        List<Integer> xs = new ArrayList<>();
+        List<BigInteger> xs = new ArrayList<>();
         List<BigInteger> ys = new ArrayList<>();
 
         for (String key : obj.keySet()) {
             if (key.equals("keys")) continue;
-            int x = Integer.parseInt(key);
+            BigInteger x = new BigInteger(key);
             int base = Integer.parseInt(obj.get(key).get("base"));
-            String value = obj.get(key).get("value");
-            BigInteger y = parseValue(value, base);
+            BigInteger y = parseValue(obj.get(key).get("value"), base);
             xs.add(x);
             ys.add(y);
         }
 
+        // Sort by x
         List<Integer> order = new ArrayList<>();
         for (int i = 0; i < xs.size(); i++) order.add(i);
-        order.sort(Comparator.comparingInt(xs::get));
+        order.sort(Comparator.comparing(xs::get));
 
-        List<Integer> xsK = new ArrayList<>();
+        // Take first k shares
+        List<BigInteger> xsK = new ArrayList<>();
         List<BigInteger> ysK = new ArrayList<>();
         for (int i = 0; i < k; i++) {
             xsK.add(xs.get(order.get(i)));
